@@ -66,40 +66,34 @@
    * working on both claude.ai and claude.com.
    */
   function isClaudeThinking() {
-    // Strategy 1: Stop button — most reliable signal that Claude is generating.
-    // When Claude is thinking/streaming, a stop button appears.
-    const stopBtn =
-      document.querySelector('button[aria-label*="Stop"]') ||
-      document.querySelector('button[aria-label*="stop"]') ||
-      document.querySelector('button[data-testid*="stop"]');
+    // Strategy 1: Stop button (exact aria-label from claude.com source).
+    // The StopButton component renders with aria-label="Stop response".
+    const stopBtn = document.querySelector('button[aria-label="Stop response"]');
     if (stopBtn && stopBtn.offsetParent !== null) return stopBtn;
 
-    // Strategy 2: aria-label containing thinking/generating
-    for (const el of document.querySelectorAll("[aria-label]")) {
-      const label = el.getAttribute("aria-label").toLowerCase();
+    // Strategy 2: Spinning animation on the stop button ring.
+    // Claude adds animate-spin class to a circular progress indicator.
+    const spinner = document.querySelector('.animate-spin');
+    if (spinner && spinner.offsetParent !== null) return spinner;
+
+    // Strategy 3: ThinkingCell — renders "Thinking" or "Thinking..." text.
+    // No data-testid, so match by text content within recent message area.
+    const thinkingEls = document.querySelectorAll('div, span');
+    for (const el of thinkingEls) {
       if (
-        (label.includes("thinking") || label.includes("generating")) &&
+        el.children.length === 0 &&
+        el.textContent.trim().match(/^Thinking\.{0,3}$/) &&
         el.offsetParent !== null
       ) {
         return el;
       }
     }
 
-    // Strategy 3: data-testid containing thinking or streaming
-    const testIdEl = document.querySelector(
-      '[data-testid*="thinking"], [data-testid*="streaming"]'
-    );
-    if (testIdEl && testIdEl.offsetParent !== null) return testIdEl;
-
-    // Strategy 4: Look for a pulsing/animated indicator near the message area.
-    // Claude uses CSS animations on a logo/icon during generation.
-    const animated = document.querySelectorAll('[class*="animate"], [class*="pulse"], [class*="loading"]');
-    for (const el of animated) {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0 && rect.width < 200) {
-        return el;
-      }
-    }
+    // Strategy 4: Fallback — any stop-like button
+    const fallbackStop =
+      document.querySelector('button[aria-label*="Stop"]') ||
+      document.querySelector('button[aria-label*="stop"]');
+    if (fallbackStop && fallbackStop.offsetParent !== null) return fallbackStop;
 
     return null;
   }
