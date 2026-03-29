@@ -1,12 +1,9 @@
 /**
  * Claude Custom Think — Content Script
  *
- * Injected into claude.ai pages. Detects when Claude is "thinking" by
- * observing the pulsing logo animation, then displays themed words
- * either inline (Option A, default) or as a floating pill (Option C).
- *
- * Claude.ai does NOT have a text-based "Thinking..." indicator — it shows
- * a pulsing/animated logo. This script adds text alongside or above it.
+ * Injected into claude.ai and claude.com pages. Detects when Claude is
+ * "thinking" by watching for the stop button, then displays themed words
+ * as a floating pill above the input area.
  */
 
 (function () {
@@ -21,11 +18,13 @@
   let cycleInterval = null;
   let isThinking = false;
   let enabled = true;
-  let displayMode = "inline"; // "inline" (Option A) or "floating" (Option C)
+  let displayMode = "floating"; // "floating" (default) or "inline"
   let injectedEl = null;
+  let debounceTimer = null;
 
   const CYCLE_MS = 1500;
   const FADE_MS = 300;
+  const DEBOUNCE_MS = 100;
 
   // ---------------------------------------------------------------------------
   // Storage helpers
@@ -37,7 +36,7 @@
         ["selectedCategory", "enabled", "displayMode"],
         (result) => {
           enabled = result.enabled !== false;
-          displayMode = result.displayMode || "inline";
+          displayMode = result.displayMode || "floating";
           const catName = result.selectedCategory || "cats";
           resolve(catName);
         }
@@ -60,40 +59,23 @@
   // ---------------------------------------------------------------------------
 
   /**
-   * Detects if Claude is currently "thinking" by looking for the animated
-   * response indicator. Claude shows a pulsing logo/animation when
-   * generating a response. We detect this via multiple strategies,
-   * working on both claude.ai and claude.com.
+   * Detects if Claude is currently thinking/generating by checking for the
+   * stop button or spinner. These are the most reliable and cheapest signals.
    */
   function isClaudeThinking() {
-    // Strategy 1: Stop button (exact aria-label from claude.com source).
-    // The StopButton component renders with aria-label="Stop response".
+    // Strategy 1: Stop button — exact aria-label from claude.com source
     const stopBtn = document.querySelector('button[aria-label="Stop response"]');
     if (stopBtn && stopBtn.offsetParent !== null) return stopBtn;
 
-    // Strategy 2: Spinning animation on the stop button ring.
-    // Claude adds animate-spin class to a circular progress indicator.
+    // Strategy 2: Any stop-like button (covers aria-label variations)
+    const stopAny = document.querySelector(
+      'button[aria-label*="Stop" i], button[aria-label*="stop" i]'
+    );
+    if (stopAny && stopAny.offsetParent !== null) return stopAny;
+
+    // Strategy 3: Spinning animation (progress ring around stop button)
     const spinner = document.querySelector('.animate-spin');
     if (spinner && spinner.offsetParent !== null) return spinner;
-
-    // Strategy 3: ThinkingCell — renders "Thinking" or "Thinking..." text.
-    // No data-testid, so match by text content within recent message area.
-    const thinkingEls = document.querySelectorAll('div, span');
-    for (const el of thinkingEls) {
-      if (
-        el.children.length === 0 &&
-        el.textContent.trim().match(/^Thinking\.{0,3}$/) &&
-        el.offsetParent !== null
-      ) {
-        return el;
-      }
-    }
-
-    // Strategy 4: Fallback — any stop-like button
-    const fallbackStop =
-      document.querySelector('button[aria-label*="Stop"]') ||
-      document.querySelector('button[aria-label*="stop"]');
-    if (fallbackStop && fallbackStop.offsetParent !== null) return fallbackStop;
 
     return null;
   }
@@ -106,37 +88,36 @@
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
-  function createInlineIndicator(anchorEl) {
-    const el = document.createElement("span");
-    el.className = "cct-inline-indicator";
-    el.style.cssText =
-      "font-size:14px;color:#d4a574;font-style:italic;font-weight:500;" +
-      "margin-left:10px;transition:opacity 0.3s ease;vertical-align:middle;" +
-      "display:inline-flex;align-items:center;gap:4px;";
-
-    // Try to insert next to the thinking element
-    if (anchorEl && anchorEl.parentElement) {
-      anchorEl.parentElement.insertBefore(el, anchorEl.nextSibling);
-    } else {
-      // Fallback: append to the last message area
-      const msgArea = document.querySelector('[class*="message"], [class*="response"], main');
-      if (msgArea) msgArea.appendChild(el);
-    }
-
-    return el;
-  }
-
   function createFloatingPill() {
     const el = document.createElement("div");
-    el.className = "cct-floating-pill";
+    el.id = "cct-pill";
     el.style.cssText =
       "position:fixed;bottom:90px;left:50%;transform:translateX(-50%);" +
       "background:linear-gradient(135deg,#f26525,#e04a0a);color:white;" +
       "padding:8px 20px;border-radius:24px;font-size:14px;font-weight:600;" +
       "font-style:italic;display:flex;align-items:center;gap:8px;" +
       "box-shadow:0 4px 16px rgba(242,101,37,0.3);z-index:99999;" +
-      "transition:opacity 0.3s ease;font-family:-apple-system,BlinkMacSystemFont,sans-serif;";
+      "transition:opacity 0.3s ease;opacity:1;" +
+      "font-family:-apple-system,BlinkMacSystemFont,sans-serif;" +
+      "pointer-events:none;";
     document.body.appendChild(el);
+    return el;
+  }
+
+  function createInlineIndicator(anchorEl) {
+    const el = document.createElement("span");
+    el.id = "cct-inline";
+    el.style.cssText =
+      "font-size:14px;color:#d4a574;font-style:italic;font-weight:500;" +
+      "margin-left:10px;transition:opacity 0.3s ease;vertical-align:middle;" +
+      "display:inline-flex;align-items:center;gap:4px;";
+
+    if (anchorEl && anchorEl.parentElement) {
+      anchorEl.parentElement.insertBefore(el, anchorEl.nextSibling);
+    } else {
+      const msgArea = document.querySelector("main");
+      if (msgArea) msgArea.appendChild(el);
+    }
     return el;
   }
 
@@ -146,17 +127,14 @@
 
     isThinking = true;
 
-    // Create the display element based on mode
-    if (displayMode === "floating") {
-      injectedEl = createFloatingPill();
-    } else {
+    if (displayMode === "inline") {
       injectedEl = createInlineIndicator(anchorEl);
+    } else {
+      injectedEl = createFloatingPill();
     }
 
-    // Set initial word
     setWord(pickRandom(currentCategory.words));
 
-    // Start cycling
     cycleInterval = setInterval(() => {
       if (injectedEl) {
         injectedEl.style.opacity = "0";
@@ -166,6 +144,8 @@
         }, FADE_MS);
       }
     }, CYCLE_MS);
+
+    console.debug("[CCT] Started cycling:", currentCategory.name);
   }
 
   function setWord(word) {
@@ -187,24 +167,29 @@
   }
 
   // ---------------------------------------------------------------------------
-  // MutationObserver
+  // MutationObserver (debounced)
   // ---------------------------------------------------------------------------
+
+  function checkThinkingState() {
+    const thinkingEl = isClaudeThinking();
+
+    if (thinkingEl && !isThinking) {
+      startCycling(thinkingEl);
+    } else if (!thinkingEl && isThinking) {
+      stopCycling();
+    }
+  }
 
   function setupObserver() {
     const observer = new MutationObserver(() => {
-      const thinkingEl = isClaudeThinking();
-
-      if (thinkingEl && !isThinking) {
-        startCycling(thinkingEl);
-      } else if (!thinkingEl && isThinking) {
-        stopCycling();
-      }
+      // Debounce — DOM mutations fire rapidly during streaming
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(checkThinkingState, DEBOUNCE_MS);
     });
 
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      characterData: true,
     });
 
     return observer;
@@ -224,7 +209,6 @@
           words: categories[catName].words,
         };
       }
-      // Restart cycling if currently thinking
       if (isThinking) {
         stopCycling();
         const el = isClaudeThinking();
@@ -241,7 +225,6 @@
 
     if (msg.type === "displayModeChanged") {
       displayMode = msg.displayMode;
-      // Restart with new mode if currently thinking
       if (isThinking) {
         stopCycling();
         const el = isClaudeThinking();
@@ -281,15 +264,17 @@
 
       setupObserver();
 
-      // Check if thinking is already happening
+      // Check if already thinking
       const existing = isClaudeThinking();
       if (existing) startCycling(existing);
 
-      console.debug("[Claude Custom Think] Initialized", {
-        category: currentCategory?.name,
-        displayMode,
-        enabled,
-      });
+      console.log(
+        "%c[Claude Custom Think]%c Loaded on " + location.hostname +
+        " | Category: " + (currentCategory?.name || "none") +
+        " | Mode: " + displayMode +
+        " | Enabled: " + enabled,
+        "color:#f26525;font-weight:bold", "color:inherit"
+      );
     } catch (err) {
       console.error("[Claude Custom Think] Init failed:", err);
     }
