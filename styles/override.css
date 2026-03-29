@@ -1,0 +1,30 @@
+/*
+ * Claude Custom Think — Override CSS
+ *
+ * Styles for both display modes:
+ *   - Inline (Option A): text next to the thinking animation
+ *   - Floating pill (Option C): pill above the input area
+ */
+
+/* Inline indicator — appears next to the pulsing dots */
+.cct-inline-indicator {
+  transition: opacity 0.3s ease;
+  font-style: italic;
+  animation: cct-fade-pulse 2s ease-in-out infinite;
+}
+
+@keyframes cct-fade-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Floating pill — fixed position above input */
+.cct-floating-pill {
+  transition: opacity 0.3s ease;
+  animation: cct-pill-float 2s ease-in-out infinite;
+}
+
+@keyframes cct-pill-float {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-3px); }
+}

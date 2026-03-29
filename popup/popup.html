@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>Claude Custom Think</title>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Claude Custom Think</h1>
+      <span class="version">v1.0.0</span>
+    </header>
+
+    <div class="current-selection" id="currentSelection">
+      <span class="label">Active:</span>
+      <span class="value" id="currentCategoryName">None</span>
+    </div>
+
+    <div class="toggle-row">
+      <label class="toggle-label" for="enabledToggle">Enabled</label>
+      <label class="switch">
+        <input type="checkbox" id="enabledToggle" checked />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="toggle-row">
+      <label class="toggle-label" for="persistToggle">Persist across sessions</label>
+      <label class="switch">
+        <input type="checkbox" id="persistToggle" checked />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="toggle-row">
+      <label class="toggle-label" for="displayModeToggle">Floating pill style</label>
+      <label class="switch">
+        <input type="checkbox" id="displayModeToggle" />
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="categories" id="categoryList">
+      <!-- Populated by popup.js -->
+    </div>
+
+    <footer>
+      <a href="https://github.com/rcom-source/custom-think-cli" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
